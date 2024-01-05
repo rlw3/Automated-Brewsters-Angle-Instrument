@@ -1,62 +1,73 @@
+from time import sleep
 import RPi.GPIO as GPIO
-import time
 
-# Constants for the stepper motors
-DEGREES_PER_STEP = 1.7
-STEPS_PER_REVOLUTION = 200
-STEPS_PER_DEGREE = STEPS_PER_REVOLUTION / (360 / DEGREES_PER_STEP)  # Calculate steps per degree
+# Suppress GPIO warnings
+GPIO.setwarnings(False)
 
-# Function to move a motor a certain number of steps in a given direction
-def move_motor(motor_pins, direction, degrees):
-    """
-    Move a motor a certain number of degrees in a given direction.
-
-    Parameters:
-    motor_pins (dict): Dictionary with 'step' and 'dir' pins of the motor.
-    direction (str): Direction to rotate the motor ('cw' for clockwise, 'ccw' for counterclockwise).
-    degrees (int): Number of degrees to move the motor.
-    """
-    steps = int(degrees * STEPS_PER_DEGREE)
-    GPIO.output(motor_pins['dir'], GPIO.HIGH if direction == 'cw' else GPIO.LOW)
-
-    for _ in range(steps):
-        GPIO.output(motor_pins['step'], GPIO.HIGH)
-        time.sleep(0.001)
-        GPIO.output(motor_pins['step'], GPIO.LOW)
-        time.sleep(0.001)
-
-# GPIO pin assignments for the motors
-detector_motor_pins = {'step': 17, 'dir': 18}
-sample_motor_pins = {'step': 23, 'dir': 24}
-
-# Set up the GPIO pins
+# Set GPIO numbering system
 GPIO.setmode(GPIO.BCM)
-for motor_pins in [detector_motor_pins, sample_motor_pins]:
-    for pin in motor_pins.values():
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, 0)
+
+# Define constants for rotation direction and steps per revolution
+CW = 1  # Clockwise
+CCW = 0  # Counter-Clockwise
+SPR = 800  # Steps per Revolution
+
+# Define pin assignments for stepper 1
+STEP_PIN_1 = 17
+DIR_PIN_1 = 18
+MODE_1 = (2, 3, 4)
+
+# Define pin assignments for stepper 2
+STEP_PIN_2 = 26
+DIR_PIN_2 = 20
+MODE_2 = (6, 13, 19)
+
+# Set up GPIO pins for step and direction
+GPIO.setup(STEP_PIN_1, GPIO.OUT)
+GPIO.setup(DIR_PIN_1, GPIO.OUT)
+GPIO.setup(STEP_PIN_2, GPIO.OUT)
+GPIO.setup(DIR_PIN_2, GPIO.OUT)
+
+# Set microstepping mode (1/4 step)
+GPIO.setup(MODE_1, GPIO.OUT)
+GPIO.setup(MODE_2, GPIO.OUT)
+GPIO.output(MODE_1, (0, 1, 0))
+GPIO.output(MODE_2, (0, 1, 0))
+
+# Step delay
+delay = 0.0208
+
+# Tracking steps for each motor
+motor_steps = {1: 0, 2: 0}
+
+def move_motor(motor, steps):
+    if motor == 1:
+        step_pin, dir_pin = STEP_PIN_1, DIR_PIN_1
+    else:
+        step_pin, dir_pin = STEP_PIN_2, DIR_PIN_2
+
+    direction = CW if steps > 0 else CCW
+    GPIO.output(dir_pin, direction)
+
+    for _ in range(abs(steps)):
+        GPIO.output(step_pin, GPIO.HIGH)
+        sleep(delay)
+        GPIO.output(step_pin, GPIO.LOW)
+        sleep(delay)
+
+    motor_steps[motor] += steps
 
 try:
-    # Get initial angles from the user
-    detector_angle = float(input("Enter initial detector angle: "))
-    sample_angle = float(input("Enter initial sample plate angle: "))
-
     while True:
-        print(f"Current angles - Detector: {detector_angle}, Sample: {sample_angle}")
+        motor = int(input("Enter motor number (1 or 2): "))
+        if motor not in [1, 2]:
+            print("Invalid motor number. Please enter 1 or 2.")
+            continue
 
-        move_choice = float(input("Enter number of degrees to move: "))
-        direction_choice = int(input("0 for smaller angle, 1 for wider angle: "))
-
-        if direction_choice == 0:
-            move_motor(detector_motor_pins, 'cw', move_choice)
-            move_motor(sample_motor_pins, 'ccw', move_choice)
-            detector_angle += move_choice
-            sample_angle -= move_choice
-        elif direction_choice == 1:
-            move_motor(detector_motor_pins, 'ccw', move_choice)
-            move_motor(sample_motor_pins, 'cw', move_choice)
-            detector_angle -= move_choice
-            sample_angle += move_choice
+        steps = int(input("Enter number of steps: "))
+        move_motor(motor, steps)
+        print(f"Motor 1 position: {motor_steps[1]} steps")
+        print(f"Motor 2 position: {motor_steps[2]} steps")
 
 except KeyboardInterrupt:
     print("Program terminated.")
